@@ -35,7 +35,7 @@ targets.toml ──▶ rosacov config   ──▶ ROSA config (0.5.1 / 0.6 스�
 | Python | 3.11 이상 | `targets.toml`을 읽는 `tomllib` 때문. 컨테이너 쪽은 3.10도 됨(`launch.sh`가 JSON 사본을 넣어 줌) |
 | binutils | `readelf`, `size` | 호스트에서 `rosacov metrics`를 직접 돌릴 때만. Ubuntu: `apt install binutils` |
 | 디스크 | 이미지 8.5GB×2 + 아티팩트 이미지 16.6GB + DynamoRIO 1.5GB + 결과 | 일괄 replay는 drcov 원본을 보존하므로 입력 수 × (수백 KB~3MB) |
-| 위치 | R2D를 어디에 두든 상관없음 | 스크립트가 자기 위치에서 루트를 찾는다. 경로에 공백은 피할 것 |
+| 위치 | R2D를 어디에 받든 상관없음 | 스크립트가 자기 위치에서 루트를 찾는다. 경로에 공백은 피할 것 |
 | 메모리 | 큰 바이너리(수 MB .text)에서 입력당 비트맵 수십 MB를 동시에 들지 않도록 설계됨. 8GB면 충분 | 재계산을 여러 개 동시에 돌리지 말 것 |
 
 numpy 등 외부 파이썬 패키지는 쓰지 않는다. 호스트·컨테이너 모두 표준 라이브러리만.
@@ -75,7 +75,7 @@ tar xzf DynamoRIO-Linux-11.91.20615.tar.gz      # -> R2D/tools/DynamoRIO-Linux-1
 ## 설치
 
 ```bash
-unzip R2D-*.zip && cd R2D                       # 1. 아무 데나 풀면 된다
+git clone https://github.com/JohnKIMMI/R2D.git && cd R2D   # 1. 아무 데나 받으면 된다
 
 docker pull plumtrie/rosa:0.6.0                 # 2. 이미지 (일반: 이 두 줄이면 된다)
 docker/build.sh                                 #    -> rosa-exp:0.6.0, 20~30분
@@ -331,7 +331,7 @@ head -c 600 inputs.jsonl
 | 컨테이너가 만든 파일을 호스트에서 못 지움 | root 소유 | `HOST_UID`를 넘기므로 rosacov가 끝날 때 chown 한다. 중간에 죽었으면 `docker run --rm -v <dir>:/c alpine chown -R $(id -u) /c` |
 | `metrics`가 메모리를 다 씀 | 입력별 비트맵을 동시에 들고 있지 않도록 2패스 구조다. 그래도 재계산을 여러 개 병렬로 돌리면 큰 바이너리에서 터진다 | 한 번에 하나 |
 | 호스트에서 `tomllib` 없음 | Python < 3.11 | 3.11 이상 설치, 또는 `bin/rosacov targets --export targets.json` 뒤 `ROSACOV_TARGETS=targets.json` |
-| `bin/rosacov targets`: `no targets defined` | `targets.toml`에 블록이 없음 | 「대상 추가」, 또는 `ROSACOV_TARGETS=examples/targets.research.toml` |
+| `bin/rosacov targets`: `no targets defined` | `targets.toml`에 블록이 없음 (저장소는 빈 틀로 온다) | 「대상 추가」, 또는 `ROSACOV_TARGETS=examples/targets.research.toml` |
 | `launch.sh`: `DynamoRIO not found` | `tools/`에 안 풀었거나 디렉터리 이름이 다름 | 요구 사항의 DynamoRIO 절 |
 
 `metrics --cutoff C`는 `sim-C/`·`evalD-C.full`의 레이블로 합집합을 만든다. 생략하면 캠페인 자신의 판정을 쓴다.

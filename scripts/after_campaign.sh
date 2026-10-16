@@ -4,9 +4,10 @@
 #   scripts/after_campaign.sh <target> <container> <campaign dir (host)> [shards=8] [cutoff=60]
 set -u
 RND=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-target=$1; cname=$2; camp=$(cd "$3" && pwd); shards=${4:-8}; cutoff=${5:-60}
+target=$1; cname=$2; camp=$(realpath -m "$3"); shards=${4:-8}; cutoff=${5:-60}   # may not exist yet (the container creates it)
 log() { echo "[$(date '+%m-%d %H:%M:%S')] $*"; }
 log "waiting for $cname"
+until docker inspect "$cname" >/dev/null 2>&1; do sleep 5; done      # tolerate being started before the container
 docker wait "$cname" >/dev/null
 docker logs "$cname" > "$camp/container.log" 2>&1
 log "campaign container exited; $(grep -c . "$camp/container.log") log lines; DONE=$([ -f "$camp/.DONE" ] && echo yes || echo no)"

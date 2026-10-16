@@ -48,7 +48,9 @@ if [ "$isolate" = 1 ]; then
   for d in bin rosacov scripts harness targets.toml targets.json; do cp -a "$R2D/$d" "$tmp/R2D/"; done
   tdir=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1]))['targets'][sys.argv[2]]; p=d['binary'].split('/root/R2D/targets/')[-1].split('/')[0] if '/root/R2D/targets/' in d['binary'] else ''; print(p)" "$R2D/targets.json" "$target")
   [ -n "$tdir" ] && cp -a "$R2D/targets/$tdir" "$tmp/R2D/targets/"
-  docker cp "$tmp/R2D" "$cname:/root/R2D" >/dev/null
+  # /root/R2D already exists in the container (the DynamoRIO mount point), so copy the
+  # directory's contents, not the directory (docker cp would nest it otherwise)
+  docker cp "$tmp/R2D/." "$cname:/root/R2D" >/dev/null
   rm -rf "$tmp"
   for c in "${copies[@]:-}"; do
     [ -n "$c" ] || continue

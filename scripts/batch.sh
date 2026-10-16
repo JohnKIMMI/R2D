@@ -12,7 +12,7 @@
 # (batch mode). Refuses to touch a run directory that already has summary.json.
 set -eu
 RND=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-target=$1; camp=$(cd "$2" && pwd); run=${3:--}; shards=${4:-8}; cutoff=${5:-60}; shift 5 2>/dev/null || shift $#
+target=$1; camp=$(realpath -e "$2"); run=${3:--}; shards=${4:-8}; cutoff=${5:-60}; shift 5 2>/dev/null || shift $#
 [ "$run" = - ] && run="$camp/rosa-out/coverage/batch"
 case $camp in "$RND"/*) ;; *) echo "campaign dir must be inside $RND (it is mounted at /root/R2D)"; exit 1 ;; esac
 c2r() { echo "/root/R2D${1#$RND}"; }
