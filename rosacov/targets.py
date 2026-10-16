@@ -93,7 +93,7 @@ class Target:
         return self.args_for(instance) if a is None else [self._sub(x, instance) for x in a]
 
     def dynamorio(self):
-        return self.globals.get("dynamorio", "/opt/dr/DynamoRIO-Linux-11.91.20615")
+        return self.globals.get("dynamorio", "/root/R2D/tools/DynamoRIO-Linux-11.91.20615")
 
     # -- shell rendering (for scripts and logs) --------------------------------------
     def replay_command(self, instance="replay", ground_truth=False):

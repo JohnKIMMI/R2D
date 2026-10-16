@@ -3,17 +3,15 @@
 # every input (logs kept), compare live vs batch, write RESULT.txt.
 #   scripts/after_campaign.sh <target> <container> <campaign dir (host)> [shards=8] [cutoff=60]
 set -u
-# repo root: R2D lives at <root>/TEST/analysis/coverage/R2D, so derive it from this script's location
-ROSA=${ROSA_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../.." && pwd)}
-RND=$ROSA/TEST/analysis/coverage/R2D
-target=$1; cname=$2; camp=$3; shards=${4:-8}; cutoff=${5:-60}
+RND=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+target=$1; cname=$2; camp=$(cd "$3" && pwd); shards=${4:-8}; cutoff=${5:-60}
 log() { echo "[$(date '+%m-%d %H:%M:%S')] $*"; }
 log "waiting for $cname"
 docker wait "$cname" >/dev/null
 docker logs "$cname" > "$camp/container.log" 2>&1
 log "campaign container exited; $(grep -c . "$camp/container.log") log lines; DONE=$([ -f "$camp/.DONE" ] && echo yes || echo no)"
 n=$(ls "$camp/rosa-out/traces" | grep -vc '\.trace$\|README')
-log "inputs: $n ; estimated drcov logs $(python3 -c "print(round($n*2.9/1024,1))") GB ; $(df -h "$ROSA" | awk 'NR==2{print "free "$4}')"
+log "inputs: $n ; estimated drcov logs $(python3 -c "print(round($n*2.9/1024,1))") GB ; $(df -h "$RND" | awk 'NR==2{print "free "$4}')"
 cov="$camp/rosa-out/coverage"
 log "batch replay ($shards shards) -> $cov/batch"
 "$RND/scripts/batch.sh" "$target" "$camp" "$cov/batch" "$shards" "$cutoff" 2>&1 | sed 's/^/  /'

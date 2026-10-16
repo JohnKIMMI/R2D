@@ -6,20 +6,19 @@
 #   run dir defaults ("-") to <campaign>/rosa-out/coverage/batch
 #
 # Example
-#   scripts/batch.sh domoticz ~/Lab/ROSA/TEST/campaigns/domoticz-1 - 8 60
+#   scripts/batch.sh domoticz campaigns/domoticz-1 - 8 60
 #
-# Host paths must be under ~/Lab/ROSA/TEST (mounted at /root/TEST). Logs are kept
+# The campaign dir must be inside this R2D directory (mounted at /root/R2D). Logs are kept
 # (batch mode). Refuses to touch a run directory that already has summary.json.
 set -eu
-# repo root: R2D lives at <root>/TEST/analysis/coverage/R2D, so derive it from this script's location
-ROSA=${ROSA_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../.." && pwd)}
-RND=$ROSA/TEST/analysis/coverage/R2D
-target=$1; camp=$2; run=${3:--}; shards=${4:-8}; cutoff=${5:-60}; shift 5 2>/dev/null || shift $#
+RND=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+target=$1; camp=$(cd "$2" && pwd); run=${3:--}; shards=${4:-8}; cutoff=${5:-60}; shift 5 2>/dev/null || shift $#
 [ "$run" = - ] && run="$camp/rosa-out/coverage/batch"
-c2r() { echo "/root/TEST${1#$ROSA/TEST}"; }
+case $camp in "$RND"/*) ;; *) echo "campaign dir must be inside $RND (it is mounted at /root/R2D)"; exit 1 ;; esac
+c2r() { echo "/root/R2D${1#$RND}"; }
 [ -f "$run/summary.json" ] && { echo "$run already has summary.json -- pick another run dir (no overwrite)"; exit 1; }
 n_inputs=$(ls "$camp/rosa-out/traces" | grep -vc '\.trace$\|README')
-echo "$target: $n_inputs inputs; drcov logs are ~$(python3 -c "print(round($n_inputs*2.9/1024,1))") GB for domoticz-sized targets. $(df -h "$ROSA" | awk 'NR==2{print "free "$4}')"
+echo "$target: $n_inputs inputs; drcov logs are ~$(python3 -c "print(round($n_inputs*2.9/1024,1))") GB for domoticz-sized targets. $(df -h "$RND" | awk 'NR==2{print "free "$4}')"
 mkdir -p "$run"
 for i in $(seq 0 $((shards-1))); do
   "$RND/scripts/launch.sh" "$target" "cov-$target-$i" --detach -- replay "$target" \

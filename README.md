@@ -4,6 +4,16 @@ ROSA로 퍼징하고, 그 입력들을 DynamoRIO(drcov)로 다시 돌려 커버�
 대상 정의(`targets.toml`) → ROSA config 생성 → 캠페인 실행(실시간 감시기 선택) → 끝난 뒤 일괄 replay → 지표 → 두 결과 대조.
 보고서·표 생성은 범위 밖이고, 결과는 캠페인의 `rosa-out/coverage/` 안에 파일로 남는다.
 
+이 디렉터리(R2D) 하나가 루트다. 도구·대상·결과가 전부 이 아래에 있고, 컨테이너에는 `/root/R2D`로 통째로 마운트된다.
+
+```
+R2D/
+  rosacov/ bin/ scripts/ docker/ harness/ tests/ README.md targets.toml
+  tools/DynamoRIO-Linux-11.91.20615/    받아서 풀어 넣는 곳
+  targets/<대상>/…                        바이너리·시드·사전 (대상별, 아래 표)
+  campaigns/<이름>/                       캠페인 결과 (rosa-out/coverage/ 에 커버리지)
+```
+
 ```
 targets.toml ──▶ rosacov config   ──▶ ROSA config (0.5.1 / 0.6 스키마)
              ──▶ rosacov campaign ──▶ rosa → simulate(수집 시간별) → evaluate(ground truth 있을 때)
@@ -24,63 +34,80 @@ targets.toml ──▶ rosacov config   ──▶ ROSA config (0.5.1 / 0.6 스�
 | Python | 3.11 이상 | `targets.toml`을 읽는 `tomllib` 때문. 컨테이너 쪽은 3.10도 됨(`launch.sh`가 JSON 사본을 넣어 줌) |
 | binutils | `readelf`, `size` | 호스트에서 `rosacov metrics`를 직접 돌릴 때만. Ubuntu: `apt install binutils` |
 | 디스크 | 이미지 8.5GB×2 + 아티팩트 이미지 16.6GB + DynamoRIO 1.5GB + 결과 | 일괄 replay는 drcov 원본을 보존하므로 입력 수 × (수백 KB~3MB) |
+| 위치 | R2D를 어디에 두든 상관없음 | 스크립트가 자기 위치에서 루트를 찾는다. 경로에 공백은 피할 것 |
 | 메모리 | 큰 바이너리(수 MB .text)에서 입력당 비트맵 수십 MB를 동시에 들지 않도록 설계됨. 8GB면 충분 | 재계산을 여러 개 동시에 돌리지 말 것 |
 
 numpy 등 외부 파이썬 패키지는 쓰지 않는다. 호스트·컨테이너 모두 표준 라이브러리만.
 
 **Docker 이미지** (크기 때문에 공유하지 않는다. 받는 쪽에서 만든다)
 
-| 이미지 | 어떻게 | 쓰는 대상 |
+필요한 이미지는 대상이 무엇이냐에 따라 다르다. 새 대상을 가져오는 경우 보통 첫 줄 하나면 된다.
+
+| 상황 | 이미지 | 어떻게 |
 |---|---|---|
-| `plumtrie/rosa-icse25-artifact:0.1.1` | `docker pull` (Docker Hub, 16.6GB). ROSA 0.5.1, 논문 아티팩트 | `*_artifact`, `jq`, `dropbear*` |
-| `plumtrie/rosa:0.6.0` | `docker pull` (7.8GB). ROSA 0.6.0 정식 | 아래 두 이미지의 베이스 |
-| `rosa-exp:0.6.0` | `docker/build.sh rosa-exp` — 위 베이스 + ROSARUM 빌드 의존성 + ROSA 패치 소켓 하네스 | 호스트 빌드 ROSARUM 6종 |
-| `rosa-exp-domoticz:0.6.0` | `docker/build.sh domoticz` — `rosa-exp` + domoticz 라이브러리(`libmosquitto1`, `libusb-0.1-4` 등) | `domoticz` |
+| **내 대상을 돌린다** (일반) | `rosa-exp:0.6.0` | `docker pull plumtrie/rosa:0.6.0` 뒤 `docker/build.sh`. ROSA 0.6.0 정식 + 빌드 도구 + ROSA 패치 소켓 하네스 |
+| 내 대상이 런타임 라이브러리를 더 요구한다 | `rosa-exp:0.6.0` 위에 한 층 | `docker/Dockerfile.domoticz`를 복사해 `apt-get install` 줄만 바꾸고 빌드. `targets.toml`의 `image`에 그 이름을 적는다 |
+| 이 저장소의 `domoticz` 항목을 그대로 돌린다 | `rosa-exp-domoticz:0.6.0` | `docker/build.sh domoticz` |
+| 논문 아티팩트 대상(`*_artifact`, `jq`, `dropbear*`)을 재현한다 | `plumtrie/rosa-icse25-artifact:0.1.1` | `docker pull` (Docker Hub, 16.6GB). ROSA 0.5.1 |
 
 빌드는 네트워크가 필요하고 20~30분 걸린다. 캠페인 컨테이너 자체는 항상 `--network none`으로 뜬다.
+대상이 어느 이미지를 쓰는지는 `targets.toml`의 `image` 한 줄이 정한다.
 
 **DynamoRIO** (1.5GB, 공식 배포판 그대로)
 
 ```bash
-mkdir -p $ROSA_ROOT/TEST/tools && cd $ROSA_ROOT/TEST/tools
+cd R2D/tools
 curl -LO https://github.com/DynamoRIO/dynamorio/releases/download/cronbuild-11.91.20615/DynamoRIO-Linux-11.91.20615.tar.gz
-tar xzf DynamoRIO-Linux-11.91.20615.tar.gz      # -> TEST/tools/DynamoRIO-Linux-11.91.20615/
+tar xzf DynamoRIO-Linux-11.91.20615.tar.gz      # -> R2D/tools/DynamoRIO-Linux-11.91.20615/
 ```
 
-`launch.sh`가 이 디렉터리를 컨테이너의 `/opt/dr/DynamoRIO-Linux-11.91.20615`로 읽기 전용 마운트한다. 다른 버전을 쓰려면
-`targets.toml`의 `[defaults] dynamorio`와 `launch.sh`의 `DR=`를 같이 바꾼다. 버전은 커버리지 결과를 호환시키려면 맞추는 것이 좋다.
+컨테이너에서는 `/root/R2D/tools/DynamoRIO-Linux-11.91.20615`로 읽기 전용 마운트된다. 다른 버전을 쓰려면 `targets.toml`의
+`[defaults] dynamorio`와 `launch.sh`의 `DR_NAME=`을 같이 바꾼다. 커버리지 결과를 서로 비교하려면 버전을 맞추는 것이 좋다.
 
-**대상 바이너리·시드** (대상별로 필요한 것만)
+**대상 파일**
 
-| 대상 | 있어야 하는 것 | 호스트 경로 → 컨테이너 경로 |
-|---|---|---|
-| ROSARUM 6종 (`poppler`·`linksys`·`proftpd`·`belkin`·`dlink`·`php`) | ROSARUM 호스트 빌드(backdoored + ground-truth), 시드 `TEST/seeds/<이름>/` | `rosarum/targets` → `/root/rosarum/targets`, `TEST` → `/root/TEST` |
-| `*_artifact` 3종 | 아티팩트 이미지 안에 다 들어 있음 | — |
-| `jq`, `dropbear*` | `TEST/New_Bench/{targets,seeds,dicts}/`, `extract-dropbearkey` | `docker cp`로 반입(`isolate = true`) |
-| `domoticz` | `TEST/New_Bench/domotcz/{extracted,seeds}/` | `TEST/New_Bench` → `/root/New_Bench` |
+`targets.toml`에는 이 연구에서 쓴 대상 13종이 예시로 들어 있다. 그대로 돌릴 것이 아니면 이 표는 건너뛰고 「대상 추가」로 간다.
+그대로 돌릴 경우 `R2D/targets/` 아래에 두어야 하는 것:
+
+| 대상 | `R2D/targets/` 아래에 있어야 하는 것 |
+|---|---|
+| `domoticz` | `domoticz/extracted/domoticz/` (빌드 트리: `domoticz` 바이너리, `domoticz.db`, `www/`), `domoticz/seeds/` |
+| `jq` | `jq/build/{backdoored,ground-truth}/jq`, `jq/seeds/` |
+| `dropbear`, `dropbear-fuzz`, `dropbear-nomaths` | `dropbear/dropbear/{backdoored,ground-truth}/dropbear`, `dropbear/dropbear-fuzz/{backdoored,ground-truth}/fuzzer-preauth{,_nomaths}`, `dropbear/seeds/`, `dropbear/ssh.dict`, `dropbear/extract-dropbearkey` |
+| `*_artifact` 3종 | 없음 — 아티팩트 이미지 안에 다 들어 있다 |
+| ROSARUM 6종 (`poppler`·`linksys`·`proftpd`·`belkin`·`dlink`·`php`) | `rosarum-seeds/<이름>/` + ROSARUM 호스트 빌드 트리를 `R2D_MOUNTS="<그 경로>:/root/rosarum/targets"`로 마운트 |
+
+정확한 파일 경로는 `bin/rosacov targets <이름>`이 보여 준다. `targets.toml`의 경로는 컨테이너 경로(`/root/R2D/...`)이고
+호스트의 `R2D/...`와 1:1이다.
 
 ## 설치
 
 ```bash
-# 1. 저장소 루트. R2D가 <root>/TEST/analysis/coverage/ 아래 있으면 스크립트가 알아서 찾으므로 생략 가능
-export ROSA_ROOT=/path/to/ROSA
+unzip R2D-*.zip && cd R2D                       # 1. 아무 데나 풀면 된다
 
-# 2. 이미지
-docker pull plumtrie/rosa-icse25-artifact:0.1.1
-docker pull plumtrie/rosa:0.6.0
-$ROSA_ROOT/TEST/analysis/coverage/R2D/docker/build.sh          # rosa-exp:0.6.0, rosa-exp-domoticz:0.6.0
+docker pull plumtrie/rosa:0.6.0                 # 2. 이미지 (일반: 이 두 줄이면 된다)
+docker/build.sh                                 #    -> rosa-exp:0.6.0, 20~30분
 
-# 3. DynamoRIO (위 절)
+cd tools && curl -LO https://github.com/DynamoRIO/dynamorio/releases/download/cronbuild-11.91.20615/DynamoRIO-Linux-11.91.20615.tar.gz \
+  && tar xzf DynamoRIO-Linux-11.91.20615.tar.gz && cd ..          # 3. DynamoRIO -> tools/
 
-# 4. 확인
-cd $ROSA_ROOT/TEST/analysis/coverage/R2D
-bin/rosacov targets                                             # 대상 13종이 나열되면 toml 로드 OK
-bin/rosacov targets domoticz                                    # 실행 명령·환경·하네스 확인
-scripts/launch.sh domoticz check -- targets domoticz                # 컨테이너 안에서도 같은 출력이면 마운트 OK
+bin/rosacov targets                             # 4. 확인: 대상 목록이 나오면 toml 로드 OK
 ```
 
-하네스 `.so`는 따로 빌드할 필요가 없다. `launch.sh`가 컨테이너를 띄울 때 `harness/build.sh`를 먼저 돌려 없거나 오래된 `.so`를
-그 컨테이너의 gcc로 만든다(이미지마다 glibc가 달라 호스트에서 빌드한 것을 넣으면 안 된다).
+여기까지가 공통이다. 그다음은 둘 중 하나다.
+
+- **내 대상을 돌린다** → 「대상 추가」: 바이너리·시드를 `targets/<이름>/`에 두고 `targets.toml`에 블록 하나를 쓴다.
+- **이 저장소의 대상(domoticz·jq·dropbear 등)을 그대로 돌린다** → 「요구 사항」의 이미지·대상 파일 표대로 준비한다.
+
+끝으로 컨테이너 안에서도 보이는지 한 번 본다(어느 대상이든 이름만 바꿔서).
+
+```bash
+bin/rosacov targets <이름>                          # 실행 명령·환경·하네스
+scripts/launch.sh <이름> check -- targets <이름>    # 컨테이너 안에서도 같은 출력이면 마운트 OK
+```
+
+하네스 `.so`는 따로 빌드할 필요가 없다. `launch.sh`가 컨테이너를 띄울 때 `harness/build.sh`를 먼저 돌려 그 컨테이너의 gcc로
+만든다(이미지마다 glibc가 달라 호스트에서 빌드한 것을 넣으면 안 된다).
 
 ## 디렉터리
 
@@ -148,20 +175,23 @@ ROSA의 `aflpp-rosa.patch`이고, 그 위에 실험용 동작을 환경 변수�
 
 ## 대상 추가
 
-`targets.toml`에 블록 하나. 캠페인·replay·실시간이 전부 이것을 읽는다.
+1. 백도어가 든 바이너리(와 있으면 ground truth 빌드), 시드, (있으면) 사전을 `targets/<이름>/` 아래에 둔다. 하위 구조는 자유다.
+2. 대상이 네트워크 서버면 「하네스」 절에서 preload와 환경 변수를 고른다. stdin 대상이면 필요 없다.
+3. 대상이 런타임 라이브러리를 더 요구하면 `docker/Dockerfile.domoticz`를 본떠 이미지를 하나 만든다.
+4. `targets.toml`에 블록 하나를 쓴다. 캠페인·replay·실시간이 전부 이것을 읽는다.
 
 ```toml
 [targets.domoticz]
 image        = "rosa-exp-domoticz:0.6.0"
 rosa_version = "0.6.0"
-binary       = "/root/New_Bench/domotcz/extracted/domoticz/domoticz"
+binary       = "/root/R2D/targets/domoticz/extracted/domoticz/domoticz"
 args         = ["-www", "8080", ..., "-userdata", "/tmp/ud-{instance}"]
-preload      = ["/root/TEST/analysis/coverage/R2D/harness/socketfuzz_dz.so"]
+preload      = ["/root/R2D/harness/socketfuzz_dz.so"]
 env          = { DESOCK_ACCEPT_ONESHOT = "1", DESOCK_EXIT_ON_CLOSE = "1", DESOCK_STDIN_PIPE = "1" }
 pre          = ["mkdir -p /tmp/ud-{instance} && ..."]      # 실행 전 한 번 (인스턴스마다)
 ground_truth = ""                                           # 없으면 판정 없음
 markers      = ["http::server::CWebServer::Cmd_Bypass"]     # 관찰 플래그 (판정 아님)
-seeds        = "/root/New_Bench/domotcz/seeds"
+seeds        = "/root/R2D/targets/domoticz/seeds"
 dictionary   = "/root/rosa/fuzzers/aflpp/aflpp/dictionaries/http.dict"
 afl_args     = ["-c", "0", "-t", "5000+", "-a", "ascii"]
 afl_env      = { AFL_FORKSRV_INIT_TMOUT = "60000" }
@@ -169,9 +199,10 @@ timeout      = 30                                           # replay 타임아�
 isolate      = false                                        # true면 bind mount 없이 docker cp
 ```
 
-경로는 컨테이너 경로다. `launch.sh`가 `$ROSA_ROOT/TEST → /root/TEST`, `$ROSA_ROOT/rosarum/targets → /root/rosarum/targets`,
-`$ROSA_ROOT/TEST/New_Bench → /root/New_Bench`, `TEST/tools/DynamoRIO-… → /opt/dr/…`로 마운트한다. `isolate = true`(jq·dropbear:
-백도어가 외부로 통신하거나 셸을 실행)면 bind mount 없이 docker cp로 넣고 결과는 `scripts/collect.sh`로 꺼낸다. 네트워크는 항상 없다.
+경로는 컨테이너 경로다. `launch.sh`가 R2D 전체를 `/root/R2D`로 마운트하므로 `targets/<이름>/…`에 둔 파일은
+`/root/R2D/targets/<이름>/…`로 적는다. 다른 호스트 디렉터리는 `R2D_MOUNTS="host:container"`로 더한다. `isolate = true`(jq·dropbear:
+백도어가 외부로 통신하거나 셸을 실행)면 bind mount 없이 패키지와 그 대상의 `targets/<이름>/`만 docker cp로 넣고 결과는
+`scripts/collect.sh`로 꺼낸다. 네트워크는 항상 없다.
 `{instance}`는 퍼저 인스턴스 이름(replay 때는 `replay`)으로 바뀌어 인스턴스마다 상태 디렉터리를 가진다.
 
 새 대상을 넣은 뒤 확인 순서: `bin/rosacov targets <이름>` → 시드 하나로 `scripts/launch.sh <이름> check -- replay <이름> --rosa-out
@@ -179,7 +210,7 @@ isolate      = false                                        # true면 bind mount
 
 ## 실행 방법
 
-설치(위)가 끝났다는 전제다. 모든 명령은 `$ROSA_ROOT/TEST/analysis/coverage/R2D`에서 실행한다.
+설치(위)가 끝났다는 전제다. 모든 명령은 R2D 디렉터리에서 실행한다.
 
 **1. 대상 확인**
 
@@ -193,13 +224,13 @@ scripts/launch.sh domoticz check -- targets domoticz  # 컨테이너 안에서�
 
 ```bash
 scripts/launch.sh domoticz rosa-domoticz --detach -- \
-    campaign domoticz --dir /root/TEST/campaigns/domoticz-1 --fuzz 18600 --phase2 14400 --live
+    campaign domoticz --dir /root/R2D/campaigns/domoticz-1 --fuzz 18600 --phase2 14400 --live
 docker logs -f rosa-domoticz                      # 진행 상황; rosa.log는 캠페인 디렉터리 안
 ```
 
 | 인자 | 뜻 |
 |---|---|
-| `--dir` | 캠페인 디렉터리, 컨테이너 경로(`/root/TEST/…` = 호스트 `$ROSA_ROOT/TEST/…`). 없으면 만든다 |
+| `--dir` | 캠페인 디렉터리, 컨테이너 경로. `/root/R2D/campaigns/<이름>` = 호스트 `R2D/campaigns/<이름>`. 없으면 만든다 |
 | `--fuzz` | 퍼징 초. Phase 2 평가 구간을 4시간으로 두려면 최대 수집 시간(3,600) + 14,400 이상 |
 | `--phase2` | Phase 2 평가 구간 초 (기본 14,400) |
 | `--phase1` | 실제 실행의 Phase 1 수집 시간 초 (기본 60). 300·900·1800·3600초는 끝난 뒤 모의 실행으로 재계산 |
@@ -211,15 +242,15 @@ docker logs -f rosa-domoticz                      # 진행 상황; rosa.log는 �
 **3. 끝난 뒤 전체 입력 커버리지** → `rosa-out/coverage/batch/`
 
 ```bash
-scripts/batch.sh domoticz $ROSA_ROOT/TEST/campaigns/domoticz-1 - 8 60
-#                 대상     캠페인 디렉터리(호스트)              run(-=기본) 분할 수  레이블 수집 시간
+scripts/batch.sh domoticz campaigns/domoticz-1 - 8 60
+#                 대상     캠페인 디렉터리        run(-=기본) 분할 수  레이블 수집 시간
 ```
 
 컨테이너 8개로 나눠 replay(원본 drcov 로그 보존)하고 지표를 한 번 계산한다. 마지막 인자는 신고 여부·군집 레이블을 어느
 `sim-<초>/`에서 가져올지다. 2와 3을 무인으로 이으려면 캠페인을 띄운 직후:
 
 ```bash
-nohup scripts/after_campaign.sh domoticz rosa-domoticz $ROSA_ROOT/TEST/campaigns/domoticz-1 8 60 > after.log 2>&1 &
+nohup scripts/after_campaign.sh domoticz rosa-domoticz campaigns/domoticz-1 8 60 > after.log 2>&1 &
 ```
 
 캠페인 종료를 기다렸다가 3을 돌리고, 실시간과 대조해 `rosa-out/coverage/{check-live-vs-batch.txt,RESULT.txt}`를 쓴다.
@@ -227,8 +258,8 @@ nohup scripts/after_campaign.sh domoticz rosa-domoticz $ROSA_ROOT/TEST/campaigns
 **4. 결과 보기**
 
 ```bash
-bin/rosacov check --campaign $ROSA_ROOT/TEST/campaigns/domoticz-1     # 실시간 vs 일괄
-cd $ROSA_ROOT/TEST/campaigns/domoticz-1/rosa-out/coverage/batch
+bin/rosacov check --campaign campaigns/domoticz-1                      # 실시간 vs 일괄
+cd campaigns/domoticz-1/rosa-out/coverage/batch
 python3 -c "import json;s=json.load(open('summary.json'));print({k:(v['inputs'],v['bytes'],v['functions']) for k,v in s['unions'].items() if v['inputs']})"
 head -c 600 inputs.jsonl
 ```
@@ -238,7 +269,7 @@ head -c 600 inputs.jsonl
 **그 밖에**
 
 ```bash
-bin/rosacov config domoticz --out-dir /root/TEST/campaigns/x          # ROSA config만 만들어 보기
+bin/rosacov config domoticz --out-dir /root/R2D/campaigns/x           # ROSA config만 만들어 보기
 bin/rosacov live domoticz --rosa-out <rosa-out> [--watch traces] [--once]   # 감시기만 따로 (컨테이너 안)
 bin/rosacov metrics domoticz --campaign <dir> --cutoff 300 \
     --run <dir>/rosa-out/coverage/batch-300 --logs <dir>/rosa-out/coverage/batch/logs
@@ -246,7 +277,7 @@ bin/rosacov metrics domoticz --campaign <dir> --cutoff 300 \
 bin/rosacov check <run A> <run B>                                      # 아무 두 run 대조
 ```
 
-격리 대상(`isolate = true`: jq·dropbear)은 bind mount가 없으므로 캠페인이 끝난 뒤 `scripts/collect.sh <컨테이너> /root/TEST/campaigns/<이름> <호스트 경로>`로 꺼낸다.
+격리 대상(`isolate = true`: jq·dropbear)은 bind mount가 없으므로 캠페인이 끝난 뒤 `scripts/collect.sh <컨테이너> /root/R2D/campaigns/<이름> campaigns/<이름>`으로 꺼낸다.
 
 `campaign --live`는 감시기를 `nice 19`로 rosa 옆에 띄운다. 감시기는 `rosa-out/backdoors/`를 5초마다 보고, 새 신고 입력의
 `decisions/` 파일이 생기면 replay해 `rosa-out/coverage/live/`에 쌓는다. rosa가 끝나면 20초 뒤 `STOP`을 놓는다.
@@ -311,5 +342,6 @@ head -c 600 inputs.jsonl
 | 컨테이너가 만든 파일을 호스트에서 못 지움 | root 소유 | `HOST_UID`를 넘기므로 rosacov가 끝날 때 chown 한다. 중간에 죽었으면 `docker run --rm -v <dir>:/c alpine chown -R $(id -u) /c` |
 | `metrics`가 메모리를 다 씀 | 입력별 비트맵을 동시에 들고 있지 않도록 2패스 구조다. 그래도 재계산을 여러 개 병렬로 돌리면 큰 바이너리에서 터진다 | 한 번에 하나 |
 | 호스트에서 `tomllib` 없음 | Python < 3.11 | 3.11 이상 설치, 또는 `bin/rosacov targets --export targets.json` 뒤 `ROSACOV_TARGETS=targets.json` |
+| `launch.sh`: `DynamoRIO not found` | `tools/`에 안 풀었거나 디렉터리 이름이 다름 | 요구 사항의 DynamoRIO 절 |
 
 `metrics --cutoff C`는 `sim-C/`·`evalD-C.full`의 레이블로 합집합을 만든다. 생략하면 캠페인 자신의 판정을 쓴다.

@@ -7,7 +7,7 @@ Two schemas:
                            env ROSA_AFL_DUMP_RUNTIME_TRACES = "1", [phase_one] seconds = N,
                            plus the detection criteria at the top
 
-Instances: the "six" preset reproduces the New_Bench layout (explore/fast/exploit x
+Instances: the "six" preset reproduces the artifact-example layout (explore/fast/exploit x
 with/without AFL_INST_LIBS); "one" is a single main instance. Both keep the
 paper's -c 0 (CmpLog) and -a ascii where the target asks for it.
 """

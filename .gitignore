@@ -5,3 +5,10 @@ harness/*.so.tmp.*
 __pycache__/
 *.pyc
 docker/build.log
+# large, machine-local: DynamoRIO, target binaries/seeds, campaign results
+tools/*
+!tools/.gitkeep
+targets/*
+!targets/.gitkeep
+campaigns/*
+!campaigns/.gitkeep

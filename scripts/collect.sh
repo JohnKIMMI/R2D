@@ -1,6 +1,7 @@
 #!/bin/bash
 # Copy a campaign directory out of an isolated container (isolate = true targets).
 #   scripts/collect.sh <container> <container path> <host path>
+#   e.g. scripts/collect.sh rosa-jq /root/R2D/campaigns/jq-1 campaigns/jq-1
 set -eu
 c=$1; src=$2; dst=$3
 docker wait "$c" >/dev/null
