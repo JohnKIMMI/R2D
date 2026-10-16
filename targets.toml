@@ -1,0 +1,214 @@
+# Every target the pipeline knows. One block = one harness, used by fuzzing (ROSA
+# config generation), batch replay and the live watcher alike.
+#
+# Paths are container paths. scripts/launch.sh mounts:
+#   ~/Lab/ROSA/TEST                 -> /root/TEST          (this package: /root/TEST/analysis/coverage/R2D)
+#   ~/Lab/ROSA/rosarum/targets      -> /root/rosarum/targets   (host-built ROSARUM)
+#   ~/Lab/ROSA/TEST/New_Bench       -> /root/New_Bench     (or docker-cp'd when isolate = true)
+#   TEST/tools/DynamoRIO-...        -> /opt/dr/DynamoRIO-Linux-11.91.20615
+# Socket harness preloads are built from R2D/harness/*.c inside the container (launch.sh).
+# The artifact image (plumtrie/rosa-icse25-artifact) carries its own ROSARUM at
+# /root/rosarum/{authentic,synthetic} and its own preloads at /root/artifact/preloads.
+#
+# {instance} is replaced by the fuzzer instance name ("replay" for replays).
+
+[defaults]
+dynamorio = "/opt/dr/DynamoRIO-Linux-11.91.20615"
+timeout = 20
+
+# ---------------------------------------------------------------------------
+# ROSARUM targets, host build, our socketfuzz harness  (TEST/ re-runs: Full_Hour, Half_Hour_4h)
+# ---------------------------------------------------------------------------
+[targets.poppler]
+image = "rosa-exp:0.6.0"
+rosa_version = "0.6.0"
+binary = "/root/rosarum/targets/synthetic/poppler-21.07.0/backdoored/build/pdf_fuzzer"
+ground_truth = "/root/rosarum/targets/synthetic/poppler-21.07.0/ground-truth/build/pdf_fuzzer"
+seeds = "/root/TEST/seeds/poppler"
+afl_args = ["-c", "0", "-a", "ascii"]
+afl_env = { AFL_INST_LIBS = "1" }
+notes = "stdin target, no preload"
+
+[targets.linksys]
+image = "rosa-exp:0.6.0"
+rosa_version = "0.6.0"
+binary = "/root/rosarum/targets/authentic/linksys-openwag200g-scfgmgr/backdoored/scfgmgr"
+ground_truth = "/root/rosarum/targets/authentic/linksys-openwag200g-scfgmgr/ground-truth/scfgmgr"
+preload = ["/root/TEST/analysis/coverage/R2D/harness/socketfuzz_plus.so"]
+env = { DESOCK_EXIT_ON_REACCEPT = "1", DESOCK_NO_FORK = "1" }
+pre = ["cp -f /root/rosarum/targets/authentic/linksys-openwag200g-scfgmgr/backdoored/nvram /tmp/nvram"]
+seeds = "/root/TEST/seeds/linksys"
+afl_args = ["-c", "0", "-a", "ascii"]
+afl_env = { AFL_INST_LIBS = "1" }
+notes = "check_nvram() needs /tmp/nvram"
+
+[targets.proftpd]
+image = "rosa-exp:0.6.0"
+rosa_version = "0.6.0"
+binary = "/root/rosarum/targets/authentic/proftpd-1.3.3c/backdoored/proftpd"
+args = ["-n", "-c", "/root/rosarum/targets/authentic/proftpd-1.3.3c/proftpd.conf"]
+ground_truth = "/root/rosarum/targets/authentic/proftpd-1.3.3c/ground-truth/proftpd"
+preload = ["/root/TEST/analysis/coverage/R2D/harness/socketfuzz_plus.so"]
+env = { DESOCK_EXIT_ON_REACCEPT = "1", DESOCK_NO_FORK = "1" }
+seeds = "/root/TEST/seeds/ftp"
+afl_args = ["-c", "0", "-a", "ascii"]
+afl_env = { AFL_INST_LIBS = "1" }
+notes = "needs --hostname fuzzhost --add-host fuzzhost:127.0.0.1 (launch.sh does this)"
+
+[targets.belkin]
+image = "rosa-exp:0.6.0"
+rosa_version = "0.6.0"
+binary = "/root/rosarum/targets/authentic/belkin-f9k1102-httpd/backdoored/build/httpd"
+ground_truth = "/root/rosarum/targets/authentic/belkin-f9k1102-httpd/ground-truth/build/httpd"
+preload = ["/root/TEST/analysis/coverage/R2D/harness/socketfuzz_plus.so"]
+env = { DESOCK_EXIT_ON_REACCEPT = "1" }
+pre = ["cp -r /root/rosarum/targets/authentic/belkin-f9k1102-httpd/www /tmp/ 2>/dev/null || true"]
+seeds = "/root/TEST/seeds/http"
+afl_args = ["-c", "0", "-a", "ascii"]
+afl_env = { AFL_INST_LIBS = "1" }
+notes = "httpd exits without /tmp/www"
+
+[targets.dlink]
+image = "rosa-exp:0.6.0"
+rosa_version = "0.6.0"
+binary = "/root/rosarum/targets/authentic/d-link-1.13A-thttpd/backdoored/thttpd"
+args = ["-D", "-p", "8080", "-d", "/root/rosarum/targets/authentic/d-link-1.13A-thttpd/example-server", "-l", "/dev/null"]
+ground_truth = "/root/rosarum/targets/authentic/d-link-1.13A-thttpd/ground-truth/thttpd"
+preload = ["/root/TEST/analysis/coverage/R2D/harness/socketfuzz_plus.so"]
+env = { DESOCK_THTTPD = "1" }
+afl_env = { AFL_INST_LIBS = "1", DESOCK_ACCEPT_ONESHOT = "1" }
+seeds = "/root/TEST/seeds/http"
+afl_args = ["-c", "0", "-a", "ascii"]
+notes = "poll()-driven; DESOCK_THTTPD makes the event loop read the stdin request"
+
+[targets.php]
+image = "rosa-exp:0.6.0"
+rosa_version = "0.6.0"
+binary = "/root/rosarum/targets/authentic/php-8.1.0-dev/backdoored/sapi/cli/php"
+args = ["-S", "127.0.0.1:8080", "-t", "/root/rosarum/targets/authentic/php-8.1.0-dev/www"]
+ground_truth = "/root/rosarum/targets/authentic/php-8.1.0-dev/ground-truth/sapi/cli/php"
+preload = ["/root/TEST/analysis/coverage/R2D/harness/socketfuzz_plus.so"]
+env = { DESOCK_EXIT_ON_REACCEPT = "1" }
+seeds = "/root/TEST/seeds/http"
+afl_args = ["-c", "0", "-a", "ascii"]
+afl_env = { AFL_INST_LIBS = "1" }
+
+# ---------------------------------------------------------------------------
+# Paper-artifact settings (artifact image's own ROSARUM build and preloads, ROSA 0.5.1)
+# ---------------------------------------------------------------------------
+[targets.dlink_artifact]
+image = "plumtrie/rosa-icse25-artifact:0.1.1"
+rosa_version = "0.5.1"
+binary = "/root/rosarum/authentic/d-link-1.13A-thttpd/backdoored/thttpd"
+args = ["-D", "-u", "root", "-p", "8080", "-d", "/root/rosarum/authentic/d-link-1.13A-thttpd/example-server"]
+ground_truth = "/root/rosarum/authentic/d-link-1.13A-thttpd/ground-truth/thttpd"
+preload = ["/root/artifact/preloads/desock/desock.so", "/root/artifact/preloads/rlimit/rlimit.so"]
+seeds = "/root/artifact/seeds/http"
+dictionary = "/root/artifact/dictionaries/http.dict"
+afl_args = ["-c", "0", "-a", "ascii"]
+afl_env = { AFL_INST_LIBS = "1" }
+
+[targets.belkin_artifact]
+image = "plumtrie/rosa-icse25-artifact:0.1.1"
+rosa_version = "0.5.1"
+binary = "/root/rosarum/authentic/belkin-f9k1102-httpd/backdoored/build/httpd"
+ground_truth = "/root/rosarum/authentic/belkin-f9k1102-httpd/ground-truth/build/httpd"
+preload = ["/root/artifact/preloads/socket_fuzzing-belkin/socketfuzz64.so"]
+pre = ["cp -r /root/rosarum/authentic/belkin-f9k1102-httpd/www /tmp/ 2>/dev/null || true"]
+seeds = "/root/artifact/seeds/http"
+dictionary = "/root/artifact/dictionaries/http.dict"
+afl_args = ["-c", "0", "-a", "ascii"]
+afl_env = { AFL_INST_LIBS = "1" }
+
+[targets.php_artifact]
+image = "plumtrie/rosa-icse25-artifact:0.1.1"
+rosa_version = "0.5.1"
+binary = "/root/rosarum/authentic/php-8.1.0-dev/backdoored/sapi/cli/php"
+args = ["-S", "127.0.0.1:8000", "-t", "/root/rosarum/authentic/php-8.1.0-dev/www"]
+ground_truth = "/root/rosarum/authentic/php-8.1.0-dev/ground-truth/sapi/cli/php"
+# the campaign used the artifact preload + AFL_QEMU_SNAPSHOT (server reset per request);
+# natively that server re-accepts for ever, so replay uses socketfuzz_plus with one-request scope
+preload = ["/root/TEST/analysis/coverage/R2D/harness/socketfuzz_plus.so"]
+env = { DESOCK_EXIT_ON_REACCEPT = "1" }
+seeds = "/root/artifact/seeds/http"
+dictionary = "/root/artifact/dictionaries/http.dict"
+afl_args = ["-c", "0", "-a", "ascii"]
+afl_env = { AFL_INST_LIBS = "1", AFL_QEMU_SNAPSHOT = "1", AFL_PRELOAD = "/root/artifact/preloads/socket_fuzzing/socketfuzz64.so" }
+
+# ---------------------------------------------------------------------------
+# New_Bench (artifact image, isolated: no bind mount, docker cp in/out)
+# ---------------------------------------------------------------------------
+[targets.jq]
+image = "plumtrie/rosa-icse25-artifact:0.1.1"
+rosa_version = "0.5.1"
+isolate = true
+binary = "/root/New_Bench/targets/jq/backdoored/jq"
+args = ["."]
+ground_truth = "/root/New_Bench/targets/jq/ground-truth/jq"
+seeds = "/root/New_Bench/seeds/jq"
+dictionary = "/root/rosa/fuzzers/aflpp/aflpp/dictionaries/json.dict"
+afl_args = ["-c", "0", "-a", "ascii"]
+afl_env = { AFL_INST_LIBS = "1" }
+notes = "backdoor curls an external host per valid JSON input -> isolate"
+
+[targets.dropbear-fuzz]
+image = "plumtrie/rosa-icse25-artifact:0.1.1"
+rosa_version = "0.5.1"
+isolate = true
+binary = "/root/New_Bench/targets/dropbear-fuzz/backdoored/fuzzer-preauth"
+ground_truth = "/root/New_Bench/targets/dropbear-fuzz/ground-truth/fuzzer-preauth"
+seeds = "/root/New_Bench/seeds/dropbear"
+dictionary = "/root/New_Bench/dicts/ssh.dict"
+afl_args = ["-c", "0", "-t", "2000+", "-a", "ascii"]
+afl_env = { AFL_INST_LIBS = "1", AFL_IGNORE_SEED_PROBLEMS = "1", AFL_IGNORE_TIMEOUTS = "1" }
+
+[targets.dropbear-nomaths]
+image = "plumtrie/rosa-icse25-artifact:0.1.1"
+rosa_version = "0.5.1"
+isolate = true
+binary = "/root/New_Bench/targets/dropbear-fuzz/backdoored/fuzzer-preauth_nomaths"
+ground_truth = "/root/New_Bench/targets/dropbear-fuzz/ground-truth/fuzzer-preauth_nomaths"
+seeds = "/root/New_Bench/seeds/dropbear"
+dictionary = "/root/New_Bench/dicts/ssh.dict"
+afl_args = ["-c", "0", "-t", "2000+", "-a", "ascii"]
+afl_env = { AFL_INST_LIBS = "1", AFL_IGNORE_SEED_PROBLEMS = "1", AFL_IGNORE_TIMEOUTS = "1" }
+
+[targets.dropbear]
+image = "plumtrie/rosa-icse25-artifact:0.1.1"
+rosa_version = "0.5.1"
+isolate = true
+binary = "/root/New_Bench/targets/dropbear/backdoored/dropbear"
+args = ["-y", "-r", "/root/hostkey", "-F", "-E", "-p", "2222"]
+ground_truth = "/root/New_Bench/targets/dropbear/ground-truth/dropbear"
+preload = ["/root/TEST/analysis/coverage/R2D/harness/socketfuzz_nb.so"]
+env = { DESOCK_EXIT_ON_REACCEPT = "1", DESOCK_NO_DAEMON = "1" }
+pre = ["[ -f /root/hostkey ] || /root/New_Bench/extract-dropbearkey -t rsa -f /root/hostkey >/dev/null 2>&1"]
+seeds = "/root/New_Bench/seeds/dropbear"
+dictionary = "/root/New_Bench/dicts/ssh.dict"
+afl_args = ["-c", "0", "-t", "2000+", "-a", "ascii"]
+afl_env = { AFL_INST_LIBS = "1", AFL_IGNORE_SEED_PROBLEMS = "1", AFL_IGNORE_TIMEOUTS = "1" }
+notes = "route A (real server): drcov log comes out empty -> no coverage; kept for fuzzing only"
+
+# ---------------------------------------------------------------------------
+# domoticz (prebuilt backdoored binary, no ground truth; rosa-exp + its libraries)
+# ---------------------------------------------------------------------------
+[targets.domoticz]
+image = "rosa-exp-domoticz:0.6.0"
+rosa_version = "0.6.0"
+binary = "/root/New_Bench/domotcz/extracted/domoticz/domoticz"
+args = ["-www", "8080", "-sslwww", "0", "-wwwbind", "127.0.0.1",
+        "-approot", "/root/New_Bench/domotcz/extracted/domoticz",
+        "-userdata", "/tmp/ud-{instance}", "-dbase", "/tmp/ud-{instance}/domoticz.db",
+        "-noupdates", "-nobrowser", "-nomdns", "-nomcp", "-nocache", "-nowwwpwd",
+        "-loglevel", "error", "-startupdelay", "0"]
+preload = ["/root/TEST/analysis/coverage/R2D/harness/socketfuzz_dz.so"]
+env = { DESOCK_ACCEPT_ONESHOT = "1", DESOCK_EXIT_ON_CLOSE = "1", DESOCK_STDIN_PIPE = "1" }
+pre = ["mkdir -p /tmp/ud-{instance} && [ -f /tmp/ud-{instance}/domoticz.db ] || cp /root/New_Bench/domotcz/extracted/domoticz/domoticz.db /tmp/ud-{instance}/; python3 -c \"import sqlite3;c=sqlite3.connect('/tmp/ud-{instance}/domoticz.db');c.execute(\\\"update Preferences set nValue=0 where Key='RemoteSharedPort'\\\");c.commit()\""]
+ground_truth = ""
+markers = ["http::server::CWebServer::Cmd_Bypass"]
+seeds = "/root/New_Bench/domotcz/seeds"
+dictionary = "/root/rosa/fuzzers/aflpp/aflpp/dictionaries/http.dict"
+afl_args = ["-c", "0", "-t", "5000+", "-a", "ascii"]
+afl_env = { AFL_FORKSRV_INIT_TMOUT = "60000" }
+timeout = 30
+notes = "boost.asio server; see harness/socketfuzz_dz.c. ~450 ms/exec under QEMU, 4 exec/s per instance"

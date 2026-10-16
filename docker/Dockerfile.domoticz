@@ -1,0 +1,6 @@
+# rosa-exp-domoticz: rosa-exp (0.6.0) + the shared libraries the prebuilt
+# domoticz binary links against. Nothing else changes.
+FROM rosa-exp:0.6.0
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      libmosquitto1 libusb-0.1-4 libsqlite3-0 libssl3 libcurl3-gnutls zlib1g \
+    && rm -rf /var/lib/apt/lists/*

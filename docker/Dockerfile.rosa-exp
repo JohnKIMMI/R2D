@@ -1,0 +1,21 @@
+# rosa-exp: ROSA 0.6.0 (plumtrie/rosa:0.6.0, Ubuntu 24.04) + build deps for the
+# ROSARUM targets + ROSA-patched socket/argv fuzzing preloads. Targets and data
+# are bind-mounted at run time. Same recipe as exp/docker/Dockerfile with the
+# base pinned to the 0.6.0 release instead of :latest.
+FROM plumtrie/rosa:0.6.0
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    autoconf autogen automake bison build-essential cmake libtool pkg-config re2c zip \
+    libbrotli-dev libbz2-dev libcap-dev libdeflate-dev libharfbuzz-dev libjbig-dev \
+    libjpeg-dev liblerc-dev liblcms2-dev liblzma-dev libopenjp2-7-dev libpam0g-dev \
+    libpng-dev libssl-dev libtiff-dev libwebp-dev libxml2-dev libzstd-dev zlib1g-dev libsqlite3-dev libboost-all-dev \
+    netcat-openbsd strace python3 binutils \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY socketfuzz.c /root/rosa/fuzzers/aflpp/aflpp/utils/socket_fuzzing/socketfuzz.c
+RUN cd /root/rosa/fuzzers/aflpp/aflpp/utils/socket_fuzzing && make clean >/dev/null 2>&1; make \
+    && cd ../argv_fuzzing && make
+
+ENV COLORTERM=truecolor
+WORKDIR /root
+CMD ["bash"]
