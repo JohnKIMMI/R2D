@@ -124,6 +124,9 @@ def load(path=None):
             doc = tomllib.load(fh)
     g = doc.get("defaults", {})
     targets = {n: Target(n, c, g) for n, c in doc.get("targets", {}).items()}
+    if not targets:
+        print(f"[rosacov] no targets defined in {p}. Add a [targets.<name>] block (template inside the file)"
+              f" or set ROSACOV_TARGETS=examples/targets.research.toml", file=__import__("sys").stderr)
     return g, targets
 
 

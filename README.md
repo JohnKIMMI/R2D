@@ -5,12 +5,13 @@ ROSA로 퍼징하고, 그 입력들을 DynamoRIO(drcov)로 다시 돌려 커버�
 보고서·표 생성은 범위 밖이고, 결과는 캠페인의 `rosa-out/coverage/` 안에 파일로 남는다.
 
 이 디렉터리(R2D) 하나가 루트다. 도구·대상·결과가 전부 이 아래에 있고, 컨테이너에는 `/root/R2D`로 통째로 마운트된다.
+**대상 프로그램은 들어 있지 않다.** 쓰는 사람이 자기 대상(백도어 빌드, 시드)을 `targets/`에 두고 `targets.toml`에 적는다.
 
 ```
 R2D/
   rosacov/ bin/ scripts/ docker/ harness/ tests/ README.md targets.toml
   tools/DynamoRIO-Linux-11.91.20615/    받아서 풀어 넣는 곳
-  targets/<대상>/…                        바이너리·시드·사전 (대상별, 아래 표)
+  targets/<대상>/…                        쓰는 사람의 대상: 바이너리·시드·사전
   campaigns/<이름>/                       캠페인 결과 (rosa-out/coverage/ 에 커버리지)
 ```
 
@@ -66,19 +67,10 @@ tar xzf DynamoRIO-Linux-11.91.20615.tar.gz      # -> R2D/tools/DynamoRIO-Linux-1
 
 **대상 파일**
 
-`targets.toml`에는 이 연구에서 쓴 대상 13종이 예시로 들어 있다. 그대로 돌릴 것이 아니면 이 표는 건너뛰고 「대상 추가」로 간다.
-그대로 돌릴 경우 `R2D/targets/` 아래에 두어야 하는 것:
-
-| 대상 | `R2D/targets/` 아래에 있어야 하는 것 |
-|---|---|
-| `domoticz` | `domoticz/extracted/domoticz/` (빌드 트리: `domoticz` 바이너리, `domoticz.db`, `www/`), `domoticz/seeds/` |
-| `jq` | `jq/build/{backdoored,ground-truth}/jq`, `jq/seeds/` |
-| `dropbear`, `dropbear-fuzz`, `dropbear-nomaths` | `dropbear/dropbear/{backdoored,ground-truth}/dropbear`, `dropbear/dropbear-fuzz/{backdoored,ground-truth}/fuzzer-preauth{,_nomaths}`, `dropbear/seeds/`, `dropbear/ssh.dict`, `dropbear/extract-dropbearkey` |
-| `*_artifact` 3종 | 없음 — 아티팩트 이미지 안에 다 들어 있다 |
-| ROSARUM 6종 (`poppler`·`linksys`·`proftpd`·`belkin`·`dlink`·`php`) | `rosarum-seeds/<이름>/` + ROSARUM 호스트 빌드 트리를 `R2D_MOUNTS="<그 경로>:/root/rosarum/targets"`로 마운트 |
-
-정확한 파일 경로는 `bin/rosacov targets <이름>`이 보여 준다. `targets.toml`의 경로는 컨테이너 경로(`/root/R2D/...`)이고
-호스트의 `R2D/...`와 1:1이다.
+이 패키지에는 대상이 없다. `targets.toml`은 빈 틀(주석 처리된 예시 블록 하나)로 들어 있고, 자기 대상을 `targets/<이름>/` 아래에
+둔 뒤 거기에 블록을 쓴다(「대상 추가」). 이 연구에서 쓴 대상 13종(ROSARUM 6·논문 아티팩트 3·jq·dropbear 3·domoticz)의
+정의는 `examples/targets.research.toml`에 참고용으로 있다. 비슷한 대상이면 블록을 복사해 쓰고, 그대로 쓰려면
+`ROSACOV_TARGETS=examples/targets.research.toml`로 지정한다(그 파일이 가리키는 바이너리·시드는 따로 구해 같은 경로에 둬야 한다).
 
 ## 설치
 
@@ -91,15 +83,11 @@ docker/build.sh                                 #    -> rosa-exp:0.6.0, 20~30분
 cd tools && curl -LO https://github.com/DynamoRIO/dynamorio/releases/download/cronbuild-11.91.20615/DynamoRIO-Linux-11.91.20615.tar.gz \
   && tar xzf DynamoRIO-Linux-11.91.20615.tar.gz && cd ..          # 3. DynamoRIO -> tools/
 
-bin/rosacov targets                             # 4. 확인: 대상 목록이 나오면 toml 로드 OK
+bin/rosacov targets                             # 4. 확인: "no targets defined" 가 나오면 정상 (아직 대상을 안 적었으므로)
 ```
 
-여기까지가 공통이다. 그다음은 둘 중 하나다.
-
-- **내 대상을 돌린다** → 「대상 추가」: 바이너리·시드를 `targets/<이름>/`에 두고 `targets.toml`에 블록 하나를 쓴다.
-- **이 저장소의 대상(domoticz·jq·dropbear 등)을 그대로 돌린다** → 「요구 사항」의 이미지·대상 파일 표대로 준비한다.
-
-끝으로 컨테이너 안에서도 보이는지 한 번 본다(어느 대상이든 이름만 바꿔서).
+그다음 「대상 추가」대로 바이너리·시드를 `targets/<이름>/`에 두고 `targets.toml`에 블록 하나를 쓴다. 끝으로 컨테이너 안에서도
+보이는지 본다.
 
 ```bash
 bin/rosacov targets <이름>                          # 실행 명령·환경·하네스
@@ -131,6 +119,7 @@ R2D/
     check.py            두 run 대조
     cli.py
   harness/              소켓 하네스 소스 3종 + build.sh (아래)
+  examples/             이 연구에서 쓴 대상 13종의 targets.toml (참고용)
   docker/               Dockerfile 2종 + build.sh
   scripts/
     launch.sh           컨테이너 하나 띄워 rosacov 명령 실행 (마운트·격리·하네스 빌드)
@@ -152,7 +141,7 @@ ROSA의 `aflpp-rosa.patch`이고, 그 위에 실험용 동작을 환경 변수�
 | `socketfuzz_nb.c` | dropbear 실제 서버 (경로 A) | `plus` + `write(0)`·`writev(0)` 무시(응답 쓰기 EBADF 방지), `setsid()` 성공 반환 |
 | `socketfuzz_dz.c` | domoticz (boost.asio 서버) | `plus` + `DESOCK_STDIN_PIPE`, `DESOCK_EXIT_ON_CLOSE`, `shutdown()` 훅, **recv/send를 fd 0일 때만** 바꿈(다른 fd는 원래 함수) |
 
-환경 변수 (전부 선택, 설정은 `targets.toml`의 `env`에 둔다):
+환경 변수 (전부 선택, 설정은 `targets.toml`의 `env`에 둔다. "쓰는 대상" 열은 이 연구의 예시다):
 
 | 변수 | 뜻 | 쓰는 대상 |
 |---|---|---|
@@ -210,7 +199,7 @@ isolate      = false                                        # true면 bind mount
 
 ## 실행 방법
 
-설치(위)가 끝났다는 전제다. 모든 명령은 R2D 디렉터리에서 실행한다.
+설치(위)와 「대상 추가」가 끝났다는 전제다. 모든 명령은 R2D 디렉터리에서 실행한다. 아래의 `domoticz`는 대상 이름 자리이니 자기 대상 이름으로 바꾼다.
 
 **1. 대상 확인**
 
@@ -342,6 +331,7 @@ head -c 600 inputs.jsonl
 | 컨테이너가 만든 파일을 호스트에서 못 지움 | root 소유 | `HOST_UID`를 넘기므로 rosacov가 끝날 때 chown 한다. 중간에 죽었으면 `docker run --rm -v <dir>:/c alpine chown -R $(id -u) /c` |
 | `metrics`가 메모리를 다 씀 | 입력별 비트맵을 동시에 들고 있지 않도록 2패스 구조다. 그래도 재계산을 여러 개 병렬로 돌리면 큰 바이너리에서 터진다 | 한 번에 하나 |
 | 호스트에서 `tomllib` 없음 | Python < 3.11 | 3.11 이상 설치, 또는 `bin/rosacov targets --export targets.json` 뒤 `ROSACOV_TARGETS=targets.json` |
+| `bin/rosacov targets`: `no targets defined` | `targets.toml`에 블록이 없음 | 「대상 추가」, 또는 `ROSACOV_TARGETS=examples/targets.research.toml` |
 | `launch.sh`: `DynamoRIO not found` | `tools/`에 안 풀었거나 디렉터리 이름이 다름 | 요구 사항의 DynamoRIO 절 |
 
 `metrics --cutoff C`는 `sim-C/`·`evalD-C.full`의 레이블로 합집합을 만든다. 생략하면 캠페인 자신의 판정을 쓴다.
